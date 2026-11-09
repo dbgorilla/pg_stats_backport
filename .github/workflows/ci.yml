@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (PostgreSQL ${{ matrix.pg }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        pg: [13, 14, 15, 16, 17, 18]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build, regression tests, pg_dump 18 round trip
+        run: docker run --rm -v "$PWD:/src:ro" postgres:${{ matrix.pg }}-bookworm bash /src/ci/test.sh ${{ matrix.pg }}
+
+  memcheck:
+    name: memcheck (PostgreSQL ${{ matrix.pg }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        pg: [13, 14, 15, 16, 17, 18]
+    steps:
+      - uses: actions/checkout@v4
+      - name: clang static analyzer and Valgrind
+        run: docker run --rm -v "$PWD:/src:ro" postgres:${{ matrix.pg }}-bookworm bash /src/ci/memcheck.sh ${{ matrix.pg }}

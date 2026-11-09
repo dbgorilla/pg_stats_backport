@@ -1,0 +1,23 @@
+-- Only a table owner, the database owner, or (from 17) a role with MAINTAIN may set statistics.
+CREATE EXTENSION pg_stats_backport;
+CREATE TABLE owned (id int);
+CREATE ROLE regress_stats_backport_user;
+GRANT SELECT ON owned TO regress_stats_backport_user;
+
+SET ROLE regress_stats_backport_user;
+SELECT pg_catalog.pg_restore_relation_stats(
+    'schemaname', 'public', 'relname', 'owned', 'reltuples', '1'::real);
+SELECT pg_catalog.pg_restore_attribute_stats(
+    'schemaname', 'public', 'relname', 'owned', 'attname', 'id',
+    'inherited', 'f'::boolean, 'null_frac', '0'::real);
+RESET ROLE;
+
+ALTER TABLE owned OWNER TO regress_stats_backport_user;
+SET ROLE regress_stats_backport_user;
+SELECT pg_catalog.pg_restore_relation_stats(
+    'schemaname', 'public', 'relname', 'owned', 'reltuples', '1'::real);
+RESET ROLE;
+
+DROP TABLE owned;
+DROP ROLE regress_stats_backport_user;
+DROP EXTENSION pg_stats_backport;

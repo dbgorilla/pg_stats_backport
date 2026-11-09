@@ -1,0 +1,6 @@
+# pg_stats_backport extension
+comment = 'PostgreSQL 18 statistics restore functions for PostgreSQL 13 to 17'
+default_version = '1.0'
+module_pathname = '$libdir/pg_stats_backport'
+relocatable = false
+superuser = true

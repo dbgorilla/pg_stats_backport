@@ -1,0 +1,79 @@
+-- The planner hook: off by default, and when on, an empty table plans with its stored size.
+LOAD 'pg_stats_backport';
+SHOW pg_stats_backport.use_stored_size;
+ pg_stats_backport.use_stored_size 
+-----------------------------------
+ off
+(1 row)
+
+CREATE EXTENSION pg_stats_backport;
+CREATE TABLE big (id int PRIMARY KEY, n int);
+CREATE TABLE never_analyzed (id int);
+SELECT pg_catalog.pg_restore_relation_stats(
+    'schemaname', 'public', 'relname', 'big',
+    'relpages', '1000'::integer, 'reltuples', '100000'::real,
+    'relallvisible', '1000'::integer);
+ pg_restore_relation_stats 
+---------------------------
+ t
+(1 row)
+
+SELECT pg_catalog.pg_restore_relation_stats(
+    'schemaname', 'public', 'relname', 'big_pkey',
+    'relpages', '300'::integer, 'reltuples', '100000'::real);
+ pg_restore_relation_stats 
+---------------------------
+ t
+(1 row)
+
+SELECT pg_catalog.pg_restore_attribute_stats(
+    'schemaname', 'public', 'relname', 'big', 'attname', 'id',
+    'inherited', 'f'::boolean,
+    'null_frac', '0'::real, 'avg_width', '4'::integer, 'n_distinct', '-1'::real);
+ pg_restore_attribute_stats 
+----------------------------
+ t
+(1 row)
+
+CREATE FUNCTION estimated_rows(query text) RETURNS numeric
+LANGUAGE plpgsql AS $$
+DECLARE plan json;
+BEGIN
+    EXECUTE 'EXPLAIN (FORMAT JSON) ' || query INTO plan;
+    RETURN (plan -> 0 -> 'Plan' ->> 'Plan Rows')::numeric;
+END $$;
+-- Off: the planner sees an empty table.
+SELECT estimated_rows('SELECT * FROM big') < 10000 AS planner_sees_small_table;
+ planner_sees_small_table 
+--------------------------
+ t
+(1 row)
+
+-- On: the planner uses the stored 100,000 rows, and picks the index for one row.
+SET pg_stats_backport.use_stored_size = on;
+SELECT estimated_rows('SELECT * FROM big');
+ estimated_rows 
+----------------
+         100000
+(1 row)
+
+EXPLAIN (COSTS OFF) SELECT * FROM big WHERE id = 5;
+            QUERY PLAN            
+----------------------------------
+ Index Scan using big_pkey on big
+   Index Cond: (id = 5)
+(2 rows)
+
+-- A table that was never analyzed keeps the planner's own estimate.
+CREATE TEMP TABLE est AS SELECT estimated_rows('SELECT * FROM never_analyzed') AS rows_on;
+SET pg_stats_backport.use_stored_size = off;
+SELECT rows_on = estimated_rows('SELECT * FROM never_analyzed') AS unchanged FROM est;
+ unchanged 
+-----------
+ t
+(1 row)
+
+RESET pg_stats_backport.use_stored_size;
+DROP FUNCTION estimated_rows(text);
+DROP TABLE big, never_analyzed;
+DROP EXTENSION pg_stats_backport;
